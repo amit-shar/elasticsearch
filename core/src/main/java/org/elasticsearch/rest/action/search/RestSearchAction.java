@@ -51,7 +51,7 @@ import static org.elasticsearch.search.suggest.SuggestBuilders.termSuggestion;
  *
  */
 public class RestSearchAction extends BaseRestHandler {
-
+    private static String maxResultSize;
     @Inject
     public RestSearchAction(Settings settings, RestController controller, Client client) {
         super(settings, controller, client);
@@ -75,6 +75,7 @@ public class RestSearchAction extends BaseRestHandler {
         controller.registerHandler(POST, "/{index}/_search/exists", restExistsAction);
         controller.registerHandler(GET, "/{index}/{type}/_search/exists", restExistsAction);
         controller.registerHandler(POST, "/{index}/{type}/_search/exists", restExistsAction);
+        maxResultSize = settings.get("es.maxresultsize");
     }
 
     @Override
@@ -142,11 +143,22 @@ public class RestSearchAction extends BaseRestHandler {
             searchSourceBuilder.from(from);
         }
         int size = request.paramAsInt("size", -1);
+        int resultSize = getMaxResultSizeAsInt();
         if (size != -1) {
             if (searchSourceBuilder == null) {
                 searchSourceBuilder = new SearchSourceBuilder();
             }
+            if (resultSize != -1 && size > resultSize) {
+                size = resultSize;
+            }
             searchSourceBuilder.size(size);
+        }
+
+        if (resultSize != -1  && size == -1) {
+            if (searchSourceBuilder == null) {
+                searchSourceBuilder = new SearchSourceBuilder();
+            }
+            searchSourceBuilder.size(resultSize);
         }
 
         if (request.hasParam("explain")) {
@@ -270,5 +282,17 @@ public class RestSearchAction extends BaseRestHandler {
         }
 
         return searchSourceBuilder;
+    }
+
+    private static int getMaxResultSizeAsInt() {
+        int resultSize = -1;
+        try {
+            if (maxResultSize != null) {
+                resultSize = Integer.parseInt(maxResultSize);
+            }
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Failed to parse int config parameter [maxResultSize] with value", e);
+        }
+        return resultSize;
     }
 }
